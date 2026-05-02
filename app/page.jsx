@@ -5,27 +5,36 @@ import { useEffect, useRef, useState } from "react";
 const MODES = {
   combo: {
     label: "Combo",
-    description:
-      "Best of both worlds — balanced, accurate, and well-structured answers.",
+    description: "Best of both worlds — balanced, accurate answers.",
   },
   chatgpt: {
-    label: "ChatGPT style",
-    description:
-      "Conversational, creative, and friendly. Great for brainstorming and writing.",
+    label: "ChatGPT",
+    description: "Conversational, creative, and friendly.",
   },
   gemini: {
-    label: "Gemini style",
-    description:
-      "Concise, factual, and structured. Great for research and quick answers.",
+    label: "Gemini",
+    description: "Concise, factual, and structured.",
+  },
+  image: {
+    label: "Image",
+    description: "Generate AI images from a text prompt (free).",
   },
 };
 
-const SUGGESTIONS = [
-  "Explain quantum computing in simple words",
-  "Write a short poem about the monsoon",
-  "Give me 5 business ideas for a college student",
-  "Compare React vs Vue in 3 bullet points",
-];
+const SUGGESTIONS = {
+  chat: [
+    "Explain quantum computing in simple words",
+    "Who won the latest cricket world cup?",
+    "Give me 5 business ideas for a college student",
+    "What's the difference between AI and ML?",
+  ],
+  image: [
+    "A cute cat astronaut on the moon, digital art",
+    "A traditional Indian palace at sunset, photorealistic",
+    "Futuristic cyberpunk city with neon lights",
+    "A peaceful Japanese garden with cherry blossoms",
+  ],
+};
 
 export default function Home() {
   const [messages, setMessages] = useState([]);
@@ -35,6 +44,8 @@ export default function Home() {
   const [error, setError] = useState("");
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
+
+  const isImageMode = mode === "image";
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -61,19 +72,41 @@ export default function Home() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nextMessages, mode }),
-      });
-
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        throw new Error(errBody.error || `Request failed (${res.status})`);
+      if (isImageMode) {
+        const res = await fetch("/api/image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: text }),
+        });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error || `Request failed (${res.status})`);
+        }
+        const data = await res.json();
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            content: data.reply || "Image generated:",
+            imageUrl: data.imageUrl,
+          },
+        ]);
+      } else {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: nextMessages, mode }),
+        });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error || `Request failed (${res.status})`);
+        }
+        const data = await res.json();
+        setMessages((m) => [
+          ...m,
+          { role: "assistant", content: data.reply },
+        ]);
       }
-
-      const data = await res.json();
-      setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
     } catch (e) {
       setError(e.message || "Something went wrong. Please try again.");
     } finally {
@@ -88,6 +121,12 @@ export default function Home() {
     }
   };
 
+  const placeholder = isImageMode
+    ? "Describe the image you want to create... (e.g. 'cat on the moon')"
+    : "Apna sawaal yahan likho... (Enter to send, Shift+Enter for new line)";
+
+  const suggestions = isImageMode ? SUGGESTIONS.image : SUGGESTIONS.chat;
+
   return (
     <div className="app">
       <header className="header">
@@ -95,7 +134,7 @@ export default function Home() {
           <div className="logo">T</div>
           <div>
             <h1>Troobe</h1>
-            <p>ChatGPT + Gemini ka combo, powered by Claude</p>
+            <p>ChatGPT + Gemini ka combo + free image generation</p>
           </div>
         </div>
 
@@ -104,7 +143,10 @@ export default function Home() {
             <button
               key={key}
               className={`mode-btn ${mode === key ? "active" : ""}`}
-              onClick={() => setMode(key)}
+              onClick={() => {
+                setMode(key);
+                setError("");
+              }}
               title={val.description}
             >
               {val.label}
@@ -117,14 +159,14 @@ export default function Home() {
         <div className="messages" ref={scrollRef}>
           {messages.length === 0 && !loading && (
             <div className="empty-state">
-              <h2>Welcome to Troobe</h2>
+              <h2>{isImageMode ? "Generate AI Images" : "Welcome to Troobe"}</h2>
               <p>
-                Ek hi jagah par ChatGPT aur Gemini jaisa experience — sawaal
-                poocho, code likhwao, ideas maango, ya koi bhi topic samjho.
-                Upar se mode bhi switch kar sakte ho.
+                {isImageMode
+                  ? "Free image generation — no API key needed. Describe what you want and Troobe will create it."
+                  : "Sawaal poocho, code likhwao, ideas maango, ya koi bhi topic samjho. Mode switch karke alag style mein answer milega. Image mode mein AI images bhi bana sakte ho — bilkul free."}
               </p>
               <div className="suggestions">
-                {SUGGESTIONS.map((s) => (
+                {suggestions.map((s) => (
                   <button
                     key={s}
                     className="suggestion"
@@ -142,7 +184,17 @@ export default function Home() {
               <div className={`avatar ${m.role === "user" ? "user" : "ai"}`}>
                 {m.role === "user" ? "U" : "AI"}
               </div>
-              <div className="bubble">{m.content}</div>
+              <div className="bubble">
+                {m.content}
+                {m.imageUrl && (
+                  <img
+                    src={m.imageUrl}
+                    alt={m.content}
+                    className="generated-image"
+                    loading="lazy"
+                  />
+                )}
+              </div>
             </div>
           ))}
 
@@ -155,6 +207,11 @@ export default function Home() {
                   <span></span>
                   <span></span>
                 </div>
+                {isImageMode && (
+                  <div className="image-loading-text">
+                    Generating image... (10-30 sec)
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -166,7 +223,7 @@ export default function Home() {
           <textarea
             ref={textareaRef}
             className="input"
-            placeholder="Apna sawaal yahan likho... (Enter to send, Shift+Enter for new line)"
+            placeholder={placeholder}
             value={input}
             onChange={(e) => {
               setInput(e.target.value);
@@ -181,14 +238,13 @@ export default function Home() {
             onClick={() => send()}
             disabled={loading || !input.trim()}
           >
-            {loading ? "..." : "Send"}
+            {loading ? "..." : isImageMode ? "Generate" : "Send"}
           </button>
         </div>
       </div>
 
       <footer className="footer">
-        troobe.com · Built with Next.js + Anthropic Claude API. Modes change
-        the assistant's style, not the model.
+        troobe.com · Built with Next.js + Gemini + Pollinations.ai · 100% free
       </footer>
     </div>
   );
